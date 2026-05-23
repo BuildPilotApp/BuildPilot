@@ -2931,33 +2931,60 @@
     .wf-task-cards {
       display: flex;
       flex-direction: column;
-      gap: 0.55rem;
-    }
-    .wf-task-card {
-      width: 100%;
-      min-height: 52px;
-      padding: 0.75rem 0.85rem;
-      border-radius: 12px;
-      border: 1px solid var(--svc-border);
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--svc-border-subtle);
       background: var(--svc-panel-raised);
+    }
+    .wf-active-task-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      gap: 0.45rem 0.55rem;
+      align-items: center;
+      width: 100%;
+      min-height: 44px;
+      padding: 0.5rem 0.65rem;
+      border: none;
+      border-bottom: 1px solid var(--svc-border-subtle);
+      background: transparent;
+      color: var(--svc-text);
+      font: inherit;
       text-align: left;
       cursor: pointer;
-      color: inherit;
+      transition: background 0.15s ease;
     }
-    .wf-task-card:active { transform: scale(0.99) translateZ(0); border-color: rgba(0, 122, 255, 0.45); }
-    .wf-task-card-top {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 0.5rem;
-      margin-bottom: 0.45rem;
+    .wf-active-task-row:last-child { border-bottom: none; }
+    .wf-active-task-row:active,
+    .wf-active-task-row:focus-visible {
+      background: rgba(0, 122, 255, 0.08);
+      outline: none;
     }
-    .wf-task-card-name {
-      font-family: var(--font-stack);
-      font-size: 0.92rem;
+    .wf-active-task-name {
+      font-size: 0.84rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-align: left;
+      justify-self: start;
+    }
+    .wf-active-task-status {
+      font-family: var(--mono-stack);
+      font-size: 0.62rem;
       font-weight: 700;
-      line-height: 1.25;
-      color: var(--svc-text);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--svc-text-subtle);
+      white-space: nowrap;
+      text-align: center;
+      justify-self: center;
+    }
+    .wf-active-task-priority {
+      justify-self: end;
+    }
+    .wf-active-task-row .wf-priority-pill {
+      font-size: 0.48rem;
+      padding: 0.2rem 0.45rem;
     }
     .wf-priority-pill {
       flex-shrink: 0;
@@ -5386,27 +5413,31 @@
         list.appendChild(empty);
         return;
       }
+      const partsForPriority = (snap && snap.parts) ? snap.parts : getPartsFromStorage();
       tasks.forEach(task => {
-        const card = document.createElement("button");
-        card.type = "button";
-        card.className = "wf-task-card";
-        const priority = getTaskPriorityLabel(task, snap.parts);
+        const row = document.createElement("button");
+        row.type = "button";
+        row.className = "wf-active-task-row";
+        const priority = getTaskPriorityLabel(task, partsForPriority);
         const status = normalizeTaskStatusValue(task);
-        const due = task.dueDate ? formatShortDate(task.dueDate) : "—";
-        card.innerHTML = `
-          <div class="wf-task-card-top">
-            <span class="wf-task-card-name"></span>
-            <span class="wf-priority-pill ${wfPriorityClass(priority)}"></span>
-          </div>
-          <div class="wf-task-card-meta">
-            <span><strong>Status</strong> ${status}</span>
-            <span><strong>Due</strong> ${due}</span>
-            <span style="grid-column:1/-1"><strong>Deps</strong> ${getTaskDependenciesLabel(task, snap.parts)}</span>
-          </div>`;
-        card.querySelector(".wf-task-card-name").textContent = task.name || "Task";
-        card.querySelector(".wf-priority-pill").textContent = priority;
-        card.onclick = () => resumeBuildToTask(task);
-        list.appendChild(card);
+        const name = document.createElement("span");
+        name.className = "wf-active-task-name";
+        name.textContent = task.name || "Task";
+        name.title = task.name || "Task";
+        const statusEl = document.createElement("span");
+        statusEl.className = "wf-active-task-status";
+        statusEl.textContent = status;
+        const priorityWrap = document.createElement("span");
+        priorityWrap.className = "wf-active-task-priority";
+        const pill = document.createElement("span");
+        pill.className = `wf-priority-pill ${wfPriorityClass(priority)}`;
+        pill.textContent = priority;
+        priorityWrap.appendChild(pill);
+        row.appendChild(name);
+        row.appendChild(statusEl);
+        row.appendChild(priorityWrap);
+        row.addEventListener("click", () => resumeBuildToTask(task));
+        list.appendChild(row);
       });
     }
 
@@ -5452,7 +5483,23 @@
       return sortPartsChronological(parts);
     }
 
+    function openWfAddPartWorkflow() {
+      if (!currentVehicle) return;
+      if (!window.wfPartsUi) window.wfPartsUi = { view: "list", detailId: null };
+      syncCurrentVehicleFromGarage();
+      ensureCurrentVehicleArraysHydrated();
+      if (window.BuildPilotInventory) {
+        window.BuildPilotInventory.ensureVehicleInventory(currentVehicle);
+      }
+      if (!window.wfPartsFilterState) {
+        window.wfPartsFilterState = { Needed: true, Ordered: true, Received: true, Installed: true };
+      }
+      window.wfPartsFilterState.Needed = true;
+      openWfPartDetail("new");
+    }
+
     function openWfPartDetail(partId) {
+      if (!window.wfPartsUi) window.wfPartsUi = { view: "list", detailId: null };
       window.wfPartsUi.view = "detail";
       window.wfPartsUi.detailId = partId;
       renderPartsInventorySection();
@@ -5569,7 +5616,9 @@
 
     function renderPartsList() {
       const mount = document.getElementById("wf-parts-list");
-      if (!mount || !currentVehicle || !window.BuildPilotInventory) return;
+      if (!mount || !currentVehicle) return;
+      syncCurrentVehicleFromGarage();
+      ensureCurrentVehicleArraysHydrated();
       const I = window.BuildPilotInventory;
       const parts = getFilteredPartsList();
       mount.innerHTML = "";
@@ -5580,7 +5629,8 @@
         empty.style.padding = "0.85rem 0.65rem";
         const allParts = getPartsFromStorage();
         const filters = window.wfPartsFilterState || {};
-        const anyStatus = I.MVP_PART_STATUSES.some((s) => filters[s] !== false);
+        const statusList = I ? I.MVP_PART_STATUSES : ["Needed", "Ordered", "Received", "Installed"];
+        const anyStatus = statusList.some((s) => filters[s] !== false);
         if (!allParts.length) {
           empty.textContent = "No parts yet. Tap + Add Part to get started.";
         } else if (!anyStatus) {
@@ -5599,10 +5649,20 @@
         const name = document.createElement("span");
         name.className = "wf-parts-inv-name";
         name.textContent = part.name || "Part";
+        name.title = part.name || "Part";
         const price = document.createElement("span");
         price.className = "wf-parts-inv-price";
-        price.textContent = formatMoney(I.partLineTotal(part));
-        const badge = I.UI.statusBadge(part.status);
+        price.textContent = I
+          ? formatMoney(I.partLineTotal(part))
+          : formatMoney(parseCost(part.cost || part.price));
+        const badge = I
+          ? I.UI.statusBadge(part.status)
+          : (() => {
+              const span = document.createElement("span");
+              span.className = "inv-status-badge";
+              span.textContent = String(part.status || "Needed");
+              return span;
+            })();
         row.appendChild(name);
         row.appendChild(price);
         row.appendChild(badge);
@@ -5619,7 +5679,7 @@
       mount.innerHTML = "";
       let part = null;
       if (mode !== "new") {
-        part = (currentVehicle.parts || []).find((p) => String(p.id) === String(mode)) || null;
+        part = getPartsFromStorage().find((p) => String(p.id) === String(mode)) || null;
       }
       if (titleEl) {
         titleEl.textContent = mode === "new" ? "Add part" : (part && part.name ? part.name : "Edit part");
@@ -5811,10 +5871,10 @@
       const addPartBtn = document.getElementById("wf-add-part-btn");
       if (addPartBtn && addPartBtn.dataset.wired !== "1") {
         addPartBtn.dataset.wired = "1";
-        addPartBtn.addEventListener("click", () => {
-          if (window.BuildPilotInventory && currentVehicle) {
-            openWfPartDetail("new");
-          }
+        addPartBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openWfAddPartWorkflow();
         });
       }
       function wireGarageModeLink(el) {
@@ -9757,11 +9817,17 @@
       updateProgress();
     }
 
-    // ---- CUSTOM ADD PART BUTTON HANDLER with CATEGORY DROPDOWN ----
     function wireAddButtons() {
-      // Kept for compatibility; folder-level add buttons are now used.
+      const addPartBtn = document.getElementById("wf-add-part-btn");
+      if (addPartBtn && addPartBtn.dataset.wfAddWired !== "1") {
+        addPartBtn.dataset.wfAddWired = "1";
+        addPartBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openWfAddPartWorkflow();
+        });
+      }
     }
-    // ---- END CUSTOM ADD PART BUTTON HANDLER ----
 
     function computeBuildSheetFinancials() {
       const parts = getPartsFromStorage();

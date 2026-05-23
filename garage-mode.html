@@ -23,6 +23,22 @@
   <div class="gm-sheet-backdrop" id="gm-sheet-backdrop" aria-hidden="true"></div>
   <div class="gm-sheet" id="gm-sheet" role="dialog" aria-modal="true" aria-hidden="true"></div>
 
+  <div class="gm-photo-overlay" id="gm-photo-overlay" hidden aria-hidden="true">
+    <div class="gm-photo-modal" role="dialog" aria-modal="true" aria-label="Photo viewer">
+      <button type="button" class="gm-photo-close" id="gm-photo-close" aria-label="Close photo">×</button>
+      <img id="gm-photo-modal-img" class="gm-photo-modal-img" alt="Garage session photo" />
+      <label class="gm-photo-note-label" for="gm-photo-note-input">Photo note</label>
+      <textarea id="gm-photo-note-input" class="gm-photo-note-input" rows="3" placeholder="Type a note for this photo…"></textarea>
+      <div class="gm-photo-note-actions">
+        <button type="button" id="gm-photo-voice-btn" class="gm-action gm-action--voice gm-photo-voice-btn">
+          <span class="gm-action-icon" aria-hidden="true">🎤</span>
+          <span class="gm-action-label">Voice note</span>
+        </button>
+        <button type="button" id="gm-photo-save-btn" class="gm-voice-save">Save note</button>
+      </div>
+    </div>
+  </div>
+
   <input type="file" id="gm-photo-input" class="gm-hidden-input" accept="image/*" capture="environment" />
   <input type="file" id="gm-photo-input-gallery" class="gm-hidden-input" accept="image/*" />
 
@@ -52,6 +68,13 @@
       const sheetEl = document.getElementById("gm-sheet");
       const photoInput = document.getElementById("gm-photo-input");
       const photoGalleryInput = document.getElementById("gm-photo-input-gallery");
+      const photoOverlay = document.getElementById("gm-photo-overlay");
+      const photoModalImg = document.getElementById("gm-photo-modal-img");
+      const photoNoteInput = document.getElementById("gm-photo-note-input");
+      const photoVoiceBtn = document.getElementById("gm-photo-voice-btn");
+      const photoSaveBtn = document.getElementById("gm-photo-save-btn");
+      const photoCloseBtn = document.getElementById("gm-photo-close");
+      let activePhotoId = null;
       function detailPageHref(id) {
         return G.vehicleDetailPageUrl(id);
       }
@@ -208,7 +231,7 @@
         actions.appendChild(UI.actionButton("Build Focus", "📝", "default", () => openQuickNoteSheet()));
         mainEl.appendChild(actions);
         mainEl.appendChild(UI.el("p", "gm-eyebrow", { text: "Live feed", style: "margin:0.5rem 0 0.35rem" }));
-        mainEl.appendChild(UI.renderFeed(session));
+        mainEl.appendChild(UI.renderFeed(session, { onPhotoClick: openPhotoViewerModal }));
         const endBtn = UI.el("button", "gm-end-btn", { type: "button", text: "End Garage Session" });
         endBtn.addEventListener("click", () => {
           if (!confirm("End this garage session and save summary to your build journal?")) return;
@@ -289,6 +312,50 @@
         handlePhotoFile(photoGalleryInput.files && photoGalleryInput.files[0]);
         photoGalleryInput.value = "";
       });
+
+      function closePhotoViewerModal() {
+        stopVoice();
+        activePhotoId = null;
+        if (photoOverlay) {
+          photoOverlay.hidden = true;
+          photoOverlay.setAttribute("aria-hidden", "true");
+        }
+      }
+
+      function openPhotoViewerModal(photo) {
+        if (!photo || !photo.dataUrl || !photoOverlay || !photoModalImg || !photoNoteInput) return;
+        activePhotoId = photo.id;
+        photoModalImg.src = photo.dataUrl;
+        photoNoteInput.value = String(photo.note || "");
+        photoOverlay.hidden = false;
+        photoOverlay.setAttribute("aria-hidden", "false");
+      }
+
+      if (photoCloseBtn) {
+        photoCloseBtn.addEventListener("click", closePhotoViewerModal);
+      }
+      if (photoOverlay) {
+        photoOverlay.addEventListener("click", (e) => {
+          if (e.target === photoOverlay) closePhotoViewerModal();
+        });
+      }
+      if (photoVoiceBtn) {
+        wireHoldToTalk(photoVoiceBtn, (text) => {
+          if (!text) return;
+          photoNoteInput.value = photoNoteInput.value
+            ? `${photoNoteInput.value.trim()} ${text}`.trim()
+            : text;
+        });
+      }
+      if (photoSaveBtn) {
+        photoSaveBtn.addEventListener("click", () => {
+          if (!activePhotoId) return;
+          G.updateSessionPhoto(vehicleId, activePhotoId, { note: photoNoteInput.value });
+          closePhotoViewerModal();
+          reloadVehicle();
+          render();
+        });
+      }
 
       function openTaskSheet() {
         reloadVehicle();
@@ -398,25 +465,63 @@
 
       function openQuickNoteSheet() {
         const body = UI.el("div", "");
+        const hint = UI.el("p", "gm-voice-hint", {
+          text: "Pick a preset, type your own note, or use voice-to-text."
+        });
+        body.appendChild(hint);
+
+        const noteInput = UI.el("textarea", "gm-focus-note-input", {
+          rows: "3",
+          placeholder: "Type a custom build focus note…"
+        });
+        body.appendChild(noteInput);
+
         const presets = ["Torque spec checked", "Needs parts", "Blocked on parts", "Test fit OK", "Outsourced fab"];
         const chips = UI.el("div", "gm-quick-chips");
         presets.forEach((p) => {
           const chip = UI.el("button", "gm-chip", { type: "button", text: p });
           chip.addEventListener("click", () => {
-            G.addSessionNote(vehicleId, p, "typed");
-            closeSheet();
-            reloadVehicle();
-            render();
+            noteInput.value = p;
+            noteInput.focus();
           });
           chips.appendChild(chip);
         });
         body.appendChild(chips);
-        const save = UI.el("button", "gm-voice-save", { type: "button", text: "Record active task note instead" });
+
+        const mic = UI.el("button", "gm-action gm-action--voice", { type: "button" });
+        mic.style.marginTop = "0.65rem";
+        mic.style.marginBottom = "0.65rem";
+        mic.appendChild(UI.el("span", "gm-action-icon", { text: "🎤" }));
+        mic.appendChild(UI.el("span", "gm-action-label", { text: "Hold to speak" }));
+        wireHoldToTalk(mic, (text) => {
+          if (!text) return;
+          noteInput.value = noteInput.value
+            ? `${noteInput.value.trim()} ${text}`.trim()
+            : text;
+        });
+        body.appendChild(mic);
+
+        const save = UI.el("button", "gm-voice-save", { type: "button", text: "Save Build Focus Note" });
         save.addEventListener("click", () => {
+          const text = String(noteInput.value || "").trim();
+          if (!text) {
+            alert("Enter or speak a build focus note first.");
+            return;
+          }
+          G.addSessionNote(vehicleId, text, "typed");
+          closeSheet();
+          reloadVehicle();
+          render();
+        });
+        body.appendChild(save);
+
+        const voiceAlt = UI.el("button", "gm-pick-btn", { type: "button", text: "Record active task note instead" });
+        voiceAlt.addEventListener("click", () => {
           closeSheet();
           openVoiceNoteSheet();
         });
-        body.appendChild(save);
+        body.appendChild(voiceAlt);
+
         openSheet("Current Build Focus", body);
       }
 

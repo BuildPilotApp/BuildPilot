@@ -112,7 +112,14 @@
       vehicleId: raw.vehicleId != null ? raw.vehicleId : vehicleId,
       startedAt: raw.startedAt || new Date().toISOString(),
       endedAt: raw.endedAt || null,
-      photos: Array.isArray(raw.photos) ? raw.photos.slice() : [],
+      photos: Array.isArray(raw.photos)
+        ? raw.photos.map((p) => ({
+          id: p.id || newId("photo_"),
+          dataUrl: p.dataUrl || "",
+          at: p.at || new Date().toISOString(),
+          note: String(p.note || "")
+        }))
+        : [],
       notes: Array.isArray(raw.notes) ? raw.notes.slice() : [],
       tasksCompleted: Array.isArray(raw.tasksCompleted) ? raw.tasksCompleted.slice() : [],
       partsInstalled: Array.isArray(raw.partsInstalled) ? raw.partsInstalled.slice() : [],
@@ -245,7 +252,24 @@
     const dataUrl = await compressImageFile(file);
     return mutateActiveSession(vehicleId, (session) => {
       if (session.photos.length >= MAX_SESSION_PHOTOS) return;
-      session.photos.push({ id: newId("photo_"), dataUrl, at: new Date().toISOString() });
+      session.photos.push({
+        id: newId("photo_"),
+        dataUrl,
+        at: new Date().toISOString(),
+        note: ""
+      });
+    });
+  }
+
+  function updateSessionPhoto(vehicleId, photoId, patch) {
+    const pid = String(photoId || "");
+    if (!pid) return null;
+    return mutateActiveSession(vehicleId, (session) => {
+      const idx = session.photos.findIndex((p) => String(p.id) === pid);
+      if (idx < 0) return;
+      if (patch && patch.note != null) {
+        session.photos[idx].note = String(patch.note).trim();
+      }
     });
   }
 
@@ -506,7 +530,8 @@
       return row;
     },
 
-    renderFeed(session) {
+    renderFeed(session, options) {
+      const opts = options || {};
       const feed = el("div", "gm-feed");
       const items = [];
       session.photos.forEach((p) => items.push({ at: p.at, type: "photo", data: p }));
@@ -519,12 +544,25 @@
         return feed;
       }
       items.slice(0, 12).forEach((item) => {
-        const row = el("div", "gm-feed-item");
         if (item.type === "photo") {
+          const row = el("button", "gm-feed-item gm-feed-item--photo", {
+            type: "button",
+            "aria-label": "View photo"
+          });
           const img = el("img", "gm-feed-thumb", { src: item.data.dataUrl, alt: "" });
           row.appendChild(img);
-          row.appendChild(el("span", "", { text: `Photo · ${formatTime(item.at)}` }));
-        } else if (item.type === "note") {
+          const label = item.data.note
+            ? String(item.data.note).slice(0, 48)
+            : `Photo · ${formatTime(item.at)}`;
+          row.appendChild(el("span", "gm-feed-text", { text: label }));
+          if (typeof opts.onPhotoClick === "function") {
+            row.addEventListener("click", () => opts.onPhotoClick(item.data));
+          }
+          feed.appendChild(row);
+          return;
+        }
+        const row = el("div", "gm-feed-item");
+        if (item.type === "note") {
           row.appendChild(el("span", "gm-feed-icon", { text: "📝" }));
           row.appendChild(el("span", "gm-feed-text", { text: item.data.text }));
         } else if (item.type === "task") {
@@ -553,6 +591,7 @@
     getActiveSession,
     endSession,
     addSessionPhoto,
+    updateSessionPhoto,
     addSessionNote,
     recordTaskCompleted,
     recordPartInstalled,

@@ -459,6 +459,115 @@ button, input, select, textarea {
 
 .gm-hidden-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
+.gm-feed-item--photo {
+  width: 100%;
+  border: none;
+  background: var(--gm-surface);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+.gm-feed-item--photo:active {
+  background: rgba(59, 158, 255, 0.12);
+}
+
+.gm-photo-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  background: rgba(0, 0, 0, 0.88);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.gm-photo-overlay[hidden] { display: none !important; }
+
+.gm-photo-modal {
+  position: relative;
+  width: min(100%, 26rem);
+  max-height: min(92dvh, 720px);
+  overflow: auto;
+  border-radius: 14px;
+  border: 1px solid var(--gm-border);
+  background: var(--gm-surface);
+  padding: 0.85rem;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+}
+
+.gm-photo-close {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--gm-border);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--gm-text);
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.gm-photo-modal-img {
+  display: block;
+  width: 100%;
+  max-height: 52dvh;
+  object-fit: contain;
+  border-radius: 10px;
+  background: #000;
+  margin-bottom: 0.65rem;
+}
+
+.gm-photo-note-label {
+  display: block;
+  margin: 0 0 0.35rem;
+  font-family: var(--gm-mono);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gm-muted);
+}
+
+.gm-photo-note-input,
+.gm-focus-note-input {
+  width: 100%;
+  min-height: 72px;
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  border: 1px solid var(--gm-border);
+  background: var(--gm-bg);
+  color: var(--gm-text);
+  resize: vertical;
+  user-select: text;
+}
+
+.gm-photo-note-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+  align-items: stretch;
+}
+.gm-photo-voice-btn {
+  flex: 1 1 140px;
+  min-height: 52px;
+}
+.gm-photo-note-actions .gm-voice-save {
+  flex: 1 1 120px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .gm-timer-display.is-running { animation: none; }
   .gm-action, .gm-sheet { transition: none; }

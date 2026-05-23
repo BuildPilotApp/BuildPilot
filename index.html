@@ -2974,21 +2974,37 @@
 
     // Remove a vehicle and all related data from localStorage
     function deleteVehicleAndRelatedData(vehId) {
-      // Remove vehicle from vehicles array
-      let vehicles = loadVehicles();
-      vehicles = vehicles.filter(v => v.id != vehId);
-      saveVehicles(vehicles);
-
-      // Remove tasks, parts, reg expiry, AND labor for this vehicle
-      const keysToRemove = [
-        `vehicle_tasks_${vehId}`,
-        `vehicle_parts_${vehId}`,
-        `vehicle_reg_expiry_${vehId}`,
-        `vehicle_labor_${vehId}`,
-      ];
-      for (const k of keysToRemove) {
-        localStorage.removeItem(k);
+      const idStr = String(vehId);
+      let vehicles = loadVehicles().filter(v => v && String(v.id) !== idStr);
+      if (window.BuildPilotStorage && window.BuildPilotStorage.writeVehiclesArrayToLocalStorage) {
+        window.BuildPilotStorage.writeVehiclesArrayToLocalStorage(vehicles);
+      } else {
+        saveVehicles(vehicles);
       }
+
+      const keysToRemove = [
+        `vehicle_tasks_${idStr}`,
+        `vehicle_parts_${idStr}`,
+        `vehicle_reg_expiry_${idStr}`,
+        `vehicle_labor_${idStr}`,
+        `vehicle_system_state_${idStr}`,
+      ];
+      keysToRemove.forEach((k) => {
+        try { localStorage.removeItem(k); } catch (_e) { /* ignore */ }
+      });
+
+      try {
+        const selected = localStorage.getItem(LS_SELECTED_VEHICLE_ID_KEY);
+        if (selected != null && String(selected) === idStr) {
+          localStorage.removeItem(LS_SELECTED_VEHICLE_ID_KEY);
+        }
+      } catch (_e) { /* ignore */ }
+
+      try {
+        window.dispatchEvent(
+          new CustomEvent("buildpilot:vehicles-updated", { detail: { vehicleId: idStr, deleted: true } })
+        );
+      } catch (_e) { /* ignore */ }
     }
 
     function formatCardAmount(num) {
@@ -3077,6 +3093,9 @@
           deleteVehicleAndRelatedData(vehicle.id);
           renderVehicles();
         }
+      });
+      deleteBtn.addEventListener("mousedown", function (e) {
+        e.stopPropagation();
       });
 
       cardWrapper.appendChild(card);
@@ -3593,8 +3612,9 @@
       "Templates: backup (Save Project Backup) or restore on a new phone."
     ];
     const USER_MANUAL_TIPS = [
-      "Your data stays on this device. No login is required.",
-      "Back up often via 'Save project backup file' or templates."
+      "Use the spreadsheet template to save time with parts and task entries, then upload it to the app.",
+      "Save your project often by tapping 'Save Project Backup File' at the bottom of the Templates drop down.",
+      "PDF Build Sheets can double as a record sheet for parts, tasks and labor if you ever sell your vehicle. Just enable the 'List for sale' check box and add a for sale price before you generate the PDF.  Use Garage Mode to your advantage. Take photos and add notes all while running a timer for accurate labor record keeping. Keeping track of parts, costs, labor hours and registration will give you a true picture of your project."
     ];
     const USER_MANUAL_BUILD_TYPES = [
       "When you add a vehicle, choose Standard or Custom under Build Configuration. That setting controls how your build is split into chapters (segments).",
@@ -4293,7 +4313,10 @@
       const cancelBtn = document.createElement("button");
       cancelBtn.type = "button"; cancelBtn.className = "modal-btn-cancel";
       cancelBtn.textContent = "Cancel";
-      cancelBtn.onclick = () => overlay.classList.remove("active");
+      cancelBtn.onclick = () => {
+        overlay.classList.remove("active");
+        overlay.innerHTML = "";
+      };
 
       const submitBtn = document.createElement("button");
       submitBtn.type = "button"; submitBtn.className = "modal-btn-primary";
@@ -4311,11 +4334,12 @@
 
         const targetCompletionDate = targetCompletionInp.value.trim();
 
-        const name = `${year} ${make} ${model}`;
+        let displayName = `${year} ${make} ${model}`.trim();
         const vehicles = loadVehicles();
-        if (vehicles.some(v => (v.name || "").toLowerCase() === name.toLowerCase())) {
-          alert("This vehicle already exists.");
-          return;
+        let suffix = 0;
+        while (vehicles.some(v => String(v.name || "").trim().toLowerCase() === displayName.toLowerCase())) {
+          suffix += 1;
+          displayName = `${year} ${make} ${model} (${suffix})`;
         }
 
         const id = Date.now() + Math.floor(Math.random() * 1000);
@@ -4323,7 +4347,7 @@
 
         const buildType = normalizeBuildType(selectedBuildType);
         const newVehicle = ensureVehicleProjectSchema({
-          id, name, year, make, model,
+          id, name: displayName, year, make, model,
           vin: vinInp.value.trim(),
           vehicleMode: "project",
           buildType,
@@ -4358,7 +4382,12 @@
       btnRow.appendChild(submitBtn);
       modal.appendChild(btnRow);
       overlay.appendChild(modal);
-      overlay.onclick = (e) => { if (e.target === overlay) overlay.classList.remove("active"); };
+      overlay.onclick = (e) => {
+        if (e.target === overlay) {
+          overlay.classList.remove("active");
+          overlay.innerHTML = "";
+        }
+      };
       overlay.classList.add("active");
 
       yearInp.focus();
