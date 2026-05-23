@@ -193,6 +193,14 @@
             if (!confirm("Delete this journal entry? This cannot be undone.")) return;
             J.deleteJournalEntry(vehicleId, entry.id);
             navigate({});
+          },
+          onDeletePhoto(ent, photoIndex) {
+            if (!confirm("Remove this photo from the entry?")) return;
+            J.deleteJournalPhoto(vehicleId, ent.id, photoIndex);
+            state.vehicle = J.getVehicleById(vehicleId) || state.vehicle;
+            const updated = J.getJournalEntry(vehicleId, ent.id);
+            if (updated) renderDetailView(updated);
+            else navigate({});
           }
         }));
       }

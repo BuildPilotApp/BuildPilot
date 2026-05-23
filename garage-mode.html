@@ -35,6 +35,7 @@
           <span class="gm-action-label">Voice note</span>
         </button>
         <button type="button" id="gm-photo-save-btn" class="gm-voice-save">Save note</button>
+        <button type="button" id="gm-photo-delete-btn" class="gm-photo-delete-btn">Delete Photo</button>
       </div>
     </div>
   </div>
@@ -73,6 +74,7 @@
       const photoNoteInput = document.getElementById("gm-photo-note-input");
       const photoVoiceBtn = document.getElementById("gm-photo-voice-btn");
       const photoSaveBtn = document.getElementById("gm-photo-save-btn");
+      const photoDeleteBtn = document.getElementById("gm-photo-delete-btn");
       const photoCloseBtn = document.getElementById("gm-photo-close");
       let activePhotoId = null;
       function detailPageHref(id) {
@@ -231,7 +233,23 @@
         actions.appendChild(UI.actionButton("Build Focus", "📝", "default", () => openQuickNoteSheet()));
         mainEl.appendChild(actions);
         mainEl.appendChild(UI.el("p", "gm-eyebrow", { text: "Live feed", style: "margin:0.5rem 0 0.35rem" }));
-        mainEl.appendChild(UI.renderFeed(session, { onPhotoClick: openPhotoViewerModal }));
+        mainEl.appendChild(UI.renderFeed(session, {
+          onPhotoClick: openPhotoViewerModal,
+          onDeletePhoto(photo) {
+            if (!photo || !photo.id) return;
+            if (!confirm("Delete this photo and its note?")) return;
+            G.deleteSessionPhoto(vehicleId, photo.id);
+            reloadVehicle();
+            render();
+          },
+          onDeleteNote(note) {
+            if (!note || !note.id) return;
+            if (!confirm("Delete this note?")) return;
+            G.deleteSessionNote(vehicleId, note.id);
+            reloadVehicle();
+            render();
+          }
+        }));
         const endBtn = UI.el("button", "gm-end-btn", { type: "button", text: "End Garage Session" });
         endBtn.addEventListener("click", () => {
           if (!confirm("End this garage session and save summary to your build journal?")) return;
@@ -351,6 +369,16 @@
         photoSaveBtn.addEventListener("click", () => {
           if (!activePhotoId) return;
           G.updateSessionPhoto(vehicleId, activePhotoId, { note: photoNoteInput.value });
+          closePhotoViewerModal();
+          reloadVehicle();
+          render();
+        });
+      }
+      if (photoDeleteBtn) {
+        photoDeleteBtn.addEventListener("click", () => {
+          if (!activePhotoId) return;
+          if (!confirm("Delete this photo and its note?")) return;
+          G.deleteSessionPhoto(vehicleId, activePhotoId);
           closePhotoViewerModal();
           reloadVehicle();
           render();

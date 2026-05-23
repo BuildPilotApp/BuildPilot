@@ -273,6 +273,22 @@
     });
   }
 
+  function deleteSessionPhoto(vehicleId, photoId) {
+    const pid = String(photoId || "");
+    if (!pid) return null;
+    return mutateActiveSession(vehicleId, (session) => {
+      session.photos = session.photos.filter((p) => String(p.id) !== pid);
+    });
+  }
+
+  function deleteSessionNote(vehicleId, noteId) {
+    const nid = String(noteId || "");
+    if (!nid) return null;
+    return mutateActiveSession(vehicleId, (session) => {
+      session.notes = session.notes.filter((n) => String(n.id) !== nid);
+    });
+  }
+
   function addSessionNote(vehicleId, text, source) {
     const trimmed = String(text || "").trim();
     if (!trimmed) return null;
@@ -530,6 +546,21 @@
       return row;
     },
 
+    appendFeedDeleteButton(parent, label, onDelete) {
+      const btn = el("button", "gm-feed-delete", {
+        type: "button",
+        "aria-label": label,
+        text: "×"
+      });
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onDelete();
+      });
+      parent.appendChild(btn);
+      return btn;
+    },
+
     renderFeed(session, options) {
       const opts = options || {};
       const feed = el("div", "gm-feed");
@@ -545,18 +576,23 @@
       }
       items.slice(0, 12).forEach((item) => {
         if (item.type === "photo") {
-          const row = el("button", "gm-feed-item gm-feed-item--photo", {
+          const row = el("div", "gm-feed-item gm-feed-item--photo");
+          const openBtn = el("button", "gm-feed-item-open", {
             type: "button",
             "aria-label": "View photo"
           });
           const img = el("img", "gm-feed-thumb", { src: item.data.dataUrl, alt: "" });
-          row.appendChild(img);
+          openBtn.appendChild(img);
           const label = item.data.note
             ? String(item.data.note).slice(0, 48)
             : `Photo · ${formatTime(item.at)}`;
-          row.appendChild(el("span", "gm-feed-text", { text: label }));
+          openBtn.appendChild(el("span", "gm-feed-text", { text: label }));
           if (typeof opts.onPhotoClick === "function") {
-            row.addEventListener("click", () => opts.onPhotoClick(item.data));
+            openBtn.addEventListener("click", () => opts.onPhotoClick(item.data));
+          }
+          row.appendChild(openBtn);
+          if (typeof opts.onDeletePhoto === "function") {
+            UI.appendFeedDeleteButton(row, "Delete photo", () => opts.onDeletePhoto(item.data));
           }
           feed.appendChild(row);
           return;
@@ -565,6 +601,9 @@
         if (item.type === "note") {
           row.appendChild(el("span", "gm-feed-icon", { text: "📝" }));
           row.appendChild(el("span", "gm-feed-text", { text: item.data.text }));
+          if (typeof opts.onDeleteNote === "function") {
+            UI.appendFeedDeleteButton(row, "Delete note", () => opts.onDeleteNote(item.data));
+          }
         } else if (item.type === "task") {
           row.appendChild(el("span", "gm-feed-icon", { text: "✓" }));
           row.appendChild(el("span", "gm-feed-text", { text: `Done: ${item.data.name}` }));
@@ -592,6 +631,8 @@
     endSession,
     addSessionPhoto,
     updateSessionPhoto,
+    deleteSessionPhoto,
+    deleteSessionNote,
     addSessionNote,
     recordTaskCompleted,
     recordPartInstalled,

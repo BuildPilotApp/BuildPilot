@@ -187,6 +187,27 @@ body {
 }
 
 .bj-list { display: flex; flex-direction: column; gap: 0.55rem; }
+.bj-card-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 0.45rem;
+}
+.bj-card-wrap .bj-card { flex: 1; min-width: 0; }
+.bj-card-delete {
+  flex-shrink: 0;
+  align-self: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid var(--bj-border);
+  background: rgba(255, 69, 58, 0.12);
+  color: #ff6b6b;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.bj-card-delete:active { transform: scale(0.95); }
 .bj-card {
   display: flex;
   gap: 0.85rem;

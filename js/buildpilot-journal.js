@@ -238,6 +238,20 @@
     return true;
   }
 
+  function deleteJournalPhoto(vehicleId, entryId, photoIndex) {
+    const vehicle = getVehicleById(vehicleId);
+    if (!vehicle || !Array.isArray(vehicle.journalEntries)) return false;
+    const entry = vehicle.journalEntries.find((e) => String(e.id) === String(entryId));
+    if (!entry || !Array.isArray(entry.photos)) return false;
+    const idx = Number(photoIndex);
+    if (!Number.isFinite(idx) || idx < 0 || idx >= entry.photos.length) return false;
+    entry.photos.splice(idx, 1);
+    entry.updatedAt = new Date().toISOString();
+    vehicle.lastUpdatedAt = new Date().toISOString();
+    persistVehicle(vehicle);
+    return true;
+  }
+
   function filterJournalEntries(entries, options) {
     const q = String(options.query || "").trim().toLowerCase();
     const phase = options.timelinePhase || "all";
@@ -395,6 +409,7 @@
      * @param {{ onOpen?: function }} handlers
      */
     journalListCard(entry, handlers) {
+      const wrap = el("div", handlers && handlers.onDelete ? "bj-card-wrap" : "");
       const card = el("button", "bj-card", { type: "button" });
       const thumbSrc = previewPhoto(entry);
       const thumb = el('div', "bj-card-thumb");
@@ -418,6 +433,21 @@
       card.appendChild(thumb);
       card.appendChild(body);
       card.addEventListener("click", () => handlers && handlers.onOpen && handlers.onOpen(entry));
+      if (handlers && handlers.onDelete) {
+        wrap.appendChild(card);
+        const del = el("button", "bj-card-delete", {
+          type: "button",
+          "aria-label": "Delete journal entry",
+          text: "×"
+        });
+        del.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handlers.onDelete(entry);
+        });
+        wrap.appendChild(del);
+        return wrap;
+      }
       return card;
     },
 
@@ -526,7 +556,10 @@
             overlay.appendChild(img);
             overlay.addEventListener("click", () => overlay.remove());
             document.body.appendChild(overlay);
-          }
+          },
+          onRemove: handlers && handlers.onDeletePhoto
+            ? (index) => handlers.onDeletePhoto(entry, index)
+            : undefined
         });
         root.appendChild(UI.detailSection("Photos", grid));
       }
@@ -687,6 +720,7 @@
     getJournalEntry,
     saveJournalEntry,
     deleteJournalEntry,
+    deleteJournalPhoto,
     filterJournalEntries,
     resolvePartLabels,
     resolveTaskLabels,

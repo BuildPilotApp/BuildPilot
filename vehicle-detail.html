@@ -4777,6 +4777,12 @@
       return null;
     }
 
+    function findVehicleById(vehicles, vehicleId) {
+      const id = String(vehicleId || "");
+      if (!id) return null;
+      return vehicles.find((v) => v != null && String(v.id) === id) || null;
+    }
+
     function getVehiclesFromStorage() {
       let vehicles = [];
       if (window.BuildPilotStorage && window.BuildPilotStorage.readVehiclesArrayFromLocalStorage) {
@@ -4809,9 +4815,18 @@
     }
 
     function refreshVehicleDetailFromMasterStorage() {
+      const vehicleId = getVehicleIdFromUrl() || localStorage.getItem(LS_SELECTED_VEHICLE_ID_KEY);
+      if (!vehicleId) return;
+      const fresh = findVehicleById(getVehiclesFromStorage(), vehicleId);
+      if (fresh) {
+        currentVehicle = fresh;
+        ensureVehicleProjectSchema(currentVehicle);
+        refreshVehicleHero();
+      }
       if (!currentVehicle) return;
       syncCurrentVehicleFromGarage();
       if (typeof renderWorkflowDashboard === "function") renderWorkflowDashboard();
+      if (typeof renderBuildActivitySection === "function") renderBuildActivitySection();
       if (typeof updateProgress === "function") updateProgress();
       if (typeof renderTotalInvestment === "function") renderTotalInvestment();
       if (typeof renderSystemFolders === "function") renderSystemFolders();
@@ -5787,6 +5802,12 @@
         timeline.appendChild(J.UI.journalListCard(entry, {
           onOpen(e) {
             window.location.href = J.journalPageUrl(currentVehicle.id, { entry: e.id });
+          },
+          onDelete(e) {
+            if (!confirm("Delete this journal entry and its photos?")) return;
+            J.deleteJournalEntry(currentVehicle.id, e.id);
+            currentVehicle = J.getVehicleById(currentVehicle.id) || currentVehicle;
+            renderBuildActivitySection();
           }
         }));
       });
@@ -11024,12 +11045,14 @@
       }
 
       const vehicles = getVehiclesFromStorage();
-      currentVehicle = vehicles.find(v => v.id == vehicleId);
+      currentVehicle = findVehicleById(vehicles, vehicleId);
       if (!currentVehicle) {
         if (heroNameEl) heroNameEl.textContent = "Vehicle Not Found";
         showBottomNav();
         return;
       }
+
+      refreshVehicleHero();
 
       if (window.BuildPilotShop && window.BuildPilotShop.isCustomerVehicle(currentVehicle)) {
         window.location.replace(window.BuildPilotShop.shopPageUrl("shop-vehicle", { id: currentVehicle.id }));
@@ -11040,7 +11063,7 @@
       showBottomNav();
 
       migrateLegacyKeysOntoVehicles();
-      currentVehicle = getVehiclesFromStorage().find(v => v.id == vehicleId) || currentVehicle;
+      currentVehicle = findVehicleById(getVehiclesFromStorage(), vehicleId) || currentVehicle;
       ensureVehicleProjectSchema(currentVehicle);
       if (window.BuildPilotJournal) {
         window.BuildPilotJournal.ensureJournalOnVehicle(currentVehicle);

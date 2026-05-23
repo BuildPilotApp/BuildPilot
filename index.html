@@ -3666,7 +3666,9 @@
     const USER_MANUAL_TIPS = [
       "Use the spreadsheet template to save time with parts and task entries, then upload it to the app.",
       "Save your project often by tapping 'Save Project Backup File' at the bottom of the Templates drop down.",
-      "PDF Build Sheets can double as a record sheet for parts, tasks and labor if you ever sell your vehicle. Just enable the 'List for sale' check box and add a for sale price before you generate the PDF.  Use Garage Mode to your advantage. Take photos and add notes all while running a timer for accurate labor record keeping. Keeping track of parts, costs, labor hours and registration will give you a true picture of your project."
+      "PDF Build Sheets can double as a record sheet for parts, tasks and labor if you ever sell your vehicle. Just enable the 'List for sale' check box and add a for sale price before you generate the PDF.",
+      "Use Garage Mode to your advantage.",
+      "Take photos and add notes all while running a timer for accurate labor record keeping. Keeping track of parts, costs, labor hours and registration will give you a true picture of your project."
     ];
     const USER_MANUAL_BUILD_TYPES = [
       "When you add a vehicle, choose Standard or Custom under Build Configuration. That setting controls how your build is split into chapters (segments).",
@@ -4413,7 +4415,9 @@
           registrationStatus,
           regNonOp: registrationStatus === "Non-Op",
           totalLaborCost: 0,
-          parts: [], tasks: [], labor: []
+          parts: [], tasks: [], labor: [],
+          journalEntries: [],
+          garageSessions: []
         });
         vehicles.push(newVehicle);
         if (window.BuildPilotStorage && window.BuildPilotStorage.writeVehiclesArrayToLocalStorage) {
@@ -4421,16 +4425,21 @@
         } else {
           saveVehicles(vehicles);
         }
-        localStorage.setItem(LS_SELECTED_VEHICLE_ID_KEY, String(id));
+        const vehicleIdStr = String(id);
+        localStorage.setItem(LS_SELECTED_VEHICLE_ID_KEY, vehicleIdStr);
+        localStorage.removeItem(`vehicle_parts_${id}`);
+        localStorage.removeItem(`vehicle_tasks_${id}`);
+        localStorage.removeItem(`vehicle_labor_${id}`);
         try {
           window.dispatchEvent(
-            new CustomEvent("buildpilot:vehicles-updated", { detail: { vehicleId: String(id) } })
+            new CustomEvent("buildpilot:vehicles-updated", { detail: { vehicleId: vehicleIdStr } })
           );
         } catch (_e) { /* ignore */ }
 
         overlay.classList.remove("active");
         overlay.innerHTML = "";
         renderVehicles();
+        window.location.href = `vehicle-detail.html?id=${encodeURIComponent(vehicleIdStr)}`;
       };
 
       btnRow.appendChild(cancelBtn);

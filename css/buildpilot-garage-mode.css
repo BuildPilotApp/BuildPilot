@@ -460,21 +460,54 @@ button, input, select, textarea {
 .gm-hidden-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 
 .gm-feed-item--photo {
-  width: 100%;
+  padding-right: 0.15rem;
+}
+.gm-feed-item-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
   border: none;
-  background: var(--gm-surface);
+  background: transparent;
   cursor: pointer;
   text-align: left;
   font: inherit;
   color: inherit;
-  padding: 0.55rem 0.65rem;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
+  padding: 0;
 }
-.gm-feed-item--photo:active {
-  background: rgba(59, 158, 255, 0.12);
+.gm-feed-item-open:active {
+  opacity: 0.85;
+}
+.gm-feed-delete {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--gm-border);
+  background: rgba(255, 69, 58, 0.15);
+  color: var(--gm-danger);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.gm-feed-delete:active {
+  transform: scale(0.95);
+}
+.gm-photo-delete-btn {
+  width: 100%;
+  margin-top: 0.65rem;
+  min-height: 48px;
+  border-radius: 12px;
+  border: 1px solid var(--gm-danger);
+  background: rgba(255, 69, 58, 0.12);
+  color: var(--gm-danger);
+  font-weight: 700;
+  cursor: pointer;
+}
+.gm-photo-delete-btn:active {
+  transform: scale(0.98);
 }
 
 .gm-photo-overlay {
