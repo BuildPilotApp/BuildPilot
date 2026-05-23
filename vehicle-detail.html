@@ -1398,28 +1398,25 @@
       text-align: center;
     }
     .add-build-segment-wrap { margin-top: 0.65rem; }
-    /* Fixed Complete Project bar (above thumb dock) */
+    /* Complete Project actions — static footer inside page content */
     .detail-complete-project-bar {
-      position: fixed;
-      left: 50%;
-      transform: translateX(-50%);
-      bottom: calc(4.35rem + env(safe-area-inset-bottom, 0px));
-      z-index: 44;
+      position: static;
       width: 100%;
-      max-width: 28rem;
+      max-width: none;
       display: flex;
       flex-direction: column;
       align-items: stretch;
       gap: 0.45rem;
-      padding: 0 1rem;
+      padding: 1.15rem 0 0.35rem;
+      margin-top: 0.35rem;
       box-sizing: border-box;
-      pointer-events: none;
     }
     .detail-complete-project-bar[hidden] {
       display: none !important;
     }
-    .detail-complete-project-bar > * {
-      pointer-events: auto;
+    .detail-complete-project-btn[hidden],
+    .detail-complete-project-hint[hidden] {
+      display: none !important;
     }
     .detail-complete-project-btn {
       width: 100%;
@@ -1481,12 +1478,6 @@
       text-align: center;
       line-height: 1.45;
       letter-spacing: 0.01em;
-    }
-    body.detail-project-completed .view-shell-inner {
-      padding-bottom: calc(10.25rem + var(--safe-bottom));
-    }
-    body.detail-has-complete-bar:not(.detail-project-completed) .view-shell-inner {
-      padding-bottom: calc(9.5rem + var(--safe-bottom));
     }
     body.detail-project-completed .vehicle-hero-section {
       border: 1px solid rgba(76, 175, 80, 0.35);
@@ -3395,28 +3386,28 @@
           </div>
         </section>
 
+        <div class="detail-complete-project-bar" id="detail-complete-project-bar" hidden>
+          <button
+            type="button"
+            id="complete-project-btn"
+            class="detail-complete-project-btn"
+          >Complete Project</button>
+          <button
+            type="button"
+            id="undo-completed-btn"
+            class="detail-complete-project-btn detail-complete-project-btn--undo"
+            hidden
+          >Mark Active Again</button>
+          <p class="detail-complete-project-hint" id="complete-project-hint" hidden>
+            This build is marked complete and appears under Completed Projects on your dashboard.
+          </p>
+        </div>
+
     </div>
 
     <div id="modal-overlay" class="modal-overlay"></div>
     </div><!-- /.view-shell-inner -->
   </main>
-
-  <div class="detail-complete-project-bar" id="detail-complete-project-bar" hidden>
-    <button
-      type="button"
-      id="complete-project-btn"
-      class="detail-complete-project-btn"
-    >Complete Project</button>
-    <button
-      type="button"
-      id="undo-completed-btn"
-      class="detail-complete-project-btn detail-complete-project-btn--undo"
-      hidden
-    >Mark Active Again</button>
-    <p class="detail-complete-project-hint" id="complete-project-hint" hidden>
-      This build is marked complete and appears under Completed Projects on your dashboard.
-    </p>
-  </div>
 
   <nav class="detail-bottom-nav" id="detail-bottom-nav" aria-label="Page navigation" hidden>
     <div class="detail-bottom-nav__dock bp-thumb-dock--split">
@@ -3815,7 +3806,7 @@
         : String(vehicleOrRaw || "active");
       const lower = raw.toLowerCase();
       if (lower === "sold") return "completed";
-      if (lower === "completed") return "completed";
+      if (lower === "completed" || lower === "complete" || lower === "archived") return "completed";
       return "active";
     }
 
@@ -4024,6 +4015,8 @@
       renderWorkflowDashboard();
       renderTotalInvestment();
       updateProgress();
+      closeHeroEditModal();
+      closeInlineDrawer("reg-status-toggle", "reg-status-panel");
     }
 
     function saveVehicleTargetCompletionDate(raw) {
@@ -4043,7 +4036,9 @@
 
     function closeHeroEditModal() {
       const overlay = document.getElementById("modal-overlay");
-      if (overlay) overlay.classList.remove("active");
+      if (!overlay) return;
+      overlay.classList.remove("active");
+      overlay.innerHTML = "";
     }
 
     function openEstFinishEditModal() {
@@ -4265,12 +4260,21 @@
       const isCompleted = status === "completed";
 
       if (bar) bar.hidden = false;
-      if (completeBtn) completeBtn.hidden = !isActive;
-      if (undoCompleteBtn) undoCompleteBtn.hidden = !isCompleted;
-      if (hint) hint.hidden = !isCompleted;
+      if (completeBtn) {
+        completeBtn.hidden = !isActive;
+        completeBtn.setAttribute("aria-hidden", isActive ? "false" : "true");
+      }
+      if (undoCompleteBtn) {
+        undoCompleteBtn.hidden = !isCompleted;
+        undoCompleteBtn.setAttribute("aria-hidden", isCompleted ? "false" : "true");
+      }
+      if (hint) {
+        hint.hidden = !isCompleted;
+        hint.setAttribute("aria-hidden", isCompleted ? "false" : "true");
+      }
 
       document.body.classList.toggle("detail-project-completed", isCompleted);
-      document.body.classList.toggle("detail-has-complete-bar", true);
+      document.body.classList.toggle("detail-has-complete-bar", isActive || isCompleted);
     }
 
     function notifyDashboardVehiclesUpdated() {
@@ -4915,6 +4919,7 @@
       if (idx === -1) return;
       vehicles[idx].parts = parts;
       saveVehicles(vehicles);
+      setStorageArray(`vehicle_parts_${currentVehicle.id}`, parts);
       currentVehicle = vehicles[idx];
       touchVehicleLastUpdated();
       updateProgress();
@@ -4930,6 +4935,7 @@
       if (idx === -1) return;
       vehicles[idx].tasks = tasks;
       saveVehicles(vehicles);
+      setStorageArray(`vehicle_tasks_${currentVehicle.id}`, tasks);
       currentVehicle = vehicles[idx];
       touchVehicleLastUpdated();
       updateProgress();
@@ -4945,6 +4951,7 @@
       if (idx === -1) return;
       vehicles[idx].labor = labor;
       saveVehicles(vehicles);
+      setStorageArray(`vehicle_labor_${currentVehicle.id}`, labor);
       currentVehicle = vehicles[idx];
       touchVehicleLastUpdated();
       updateProgress();
@@ -5360,9 +5367,14 @@
 
     function renderActiveTasksSection(snap) {
       const list = document.getElementById("wf-active-tasks-list");
-      if (!list) return;
+      if (!list || !currentVehicle) return;
+      syncCurrentVehicleFromGarage();
+      ensureCurrentVehicleArraysHydrated();
       list.innerHTML = "";
-      const tasks = snap.openTasks.slice().sort((a, b) => {
+      const sourceTasks = snap && Array.isArray(snap.openTasks)
+        ? snap.openTasks
+        : getTasksFromStorage().filter((t) => !isTaskComplete(t));
+      const tasks = sourceTasks.slice().sort((a, b) => {
         const pa = WF_PRIORITY_ORDER[getTaskPriorityLabel(a, snap.parts)] ?? 3;
         const pb = WF_PRIORITY_ORDER[getTaskPriorityLabel(b, snap.parts)] ?? 3;
         return pa - pb;
@@ -5430,7 +5442,7 @@
       const filters = window.wfPartsFilterState || {};
       const categoryFilter = window.wfPartsCategoryFilter || "";
       const activeStatuses = I.MVP_PART_STATUSES.filter((s) => filters[s] !== false);
-      let parts = (currentVehicle.parts || []).slice();
+      let parts = getPartsFromStorage().slice();
       if (activeStatuses.length && activeStatuses.length < I.MVP_PART_STATUSES.length) {
         parts = parts.filter((p) => activeStatuses.includes(I.normalizePartStatus(p.status)));
       }
@@ -5464,17 +5476,35 @@
       if (typeof renderPartsList === "function") renderPartsList();
     }
 
-    function commitWfInventoryPart(payload) {
+    function commitWfInventoryPart(payload, options) {
       const I = window.BuildPilotInventory;
       if (!I || !currentVehicle) return null;
+      const opts = options || {};
+      let prevStatus = opts.previousStatus != null ? I.normalizePartStatus(opts.previousStatus) : null;
+      if (prevStatus == null && payload && payload.id != null) {
+        const existing = getPartsFromStorage().find((p) => String(p.id) === String(payload.id));
+        if (existing) prevStatus = I.normalizePartStatus(existing.status);
+      }
       const saved = I.savePart(currentVehicle.id, payload);
       if (!saved) return null;
       currentVehicle = I.getVehicle(currentVehicle.id) || currentVehicle;
+      syncCurrentVehicleFromGarage();
       syncWfInventoryListForPartStatus(saved.status);
       try {
         window.dispatchEvent(new CustomEvent("buildpilot:vehicles-updated", { detail: { vehicleId: String(currentVehicle.id) } }));
       } catch (_e) { /* ignore */ }
       if (typeof updateProgress === "function") updateProgress();
+      if (typeof renderWorkflowDashboard === "function") renderWorkflowDashboard();
+      const nextStatus = I.normalizePartStatus(saved.status);
+      if (nextStatus === "Received" && prevStatus !== "Received") {
+        promptReceivedPartFollowUps(saved, (changed) => {
+          if (changed) {
+            currentVehicle = I.getVehicle(currentVehicle.id) || currentVehicle;
+            syncCurrentVehicleFromGarage();
+            refreshBuildSegmentUi();
+          }
+        });
+      }
       return saved;
     }
 
@@ -5530,9 +5560,10 @@
 
     function renderPartsStatusFilters() {
       const statusMount = document.getElementById("wf-parts-status-filters");
-      if (!window.BuildPilotInventory) return;
-      const I = window.BuildPilotInventory;
-      renderPartsFilterCheckboxes(statusMount, I.MVP_PART_STATUSES, window.wfPartsFilterState);
+      if (window.BuildPilotInventory && statusMount) {
+        const I = window.BuildPilotInventory;
+        renderPartsFilterCheckboxes(statusMount, I.MVP_PART_STATUSES, window.wfPartsFilterState);
+      }
       renderPartsCategorySelect();
     }
 
@@ -5547,7 +5578,7 @@
         const empty = document.createElement("div");
         empty.className = "wf-empty";
         empty.style.padding = "0.85rem 0.65rem";
-        const allParts = currentVehicle.parts || [];
+        const allParts = getPartsFromStorage();
         const filters = window.wfPartsFilterState || {};
         const anyStatus = I.MVP_PART_STATUSES.some((s) => filters[s] !== false);
         if (!allParts.length) {
@@ -5598,7 +5629,10 @@
           closeWfPartDetail();
         },
         onSave(payload) {
-          if (!commitWfInventoryPart(payload)) {
+          const existing = payload && payload.id != null
+            ? getPartsFromStorage().find((p) => String(p.id) === String(payload.id))
+            : null;
+          if (!commitWfInventoryPart(payload, { previousStatus: existing && existing.status })) {
             alert("Could not save part. Try again.");
             return;
           }
@@ -6111,6 +6145,7 @@
       const nonOpCb = document.getElementById("reg-drawer-nonop");
       if (!expiryInp || !nonOpCb) return;
       applyVehicleRegistration(expiryInp.value, nonOpCb.checked);
+      closeInlineDrawer("reg-status-toggle", "reg-status-panel");
     }
 
     function readCssLengthPx(value) {
@@ -8035,6 +8070,7 @@
       tasksBtn.textContent = "Add to Tasks?";
       tasksBtn.onclick = () => {
         overlay.classList.remove("active");
+        overlay.innerHTML = "";
         const changed = createInstallTaskForReceivedPart(part);
         if (typeof onComplete === "function") onComplete(changed);
       };
@@ -8044,6 +8080,7 @@
       laborBtn.textContent = "Add to Outside Labor?";
       laborBtn.onclick = () => {
         overlay.classList.remove("active");
+        overlay.innerHTML = "";
         const changed = createOutsideLaborForReceivedPart(part);
         if (typeof onComplete === "function") onComplete(changed);
       };
@@ -8054,6 +8091,7 @@
       skipBtn.textContent = "Not Now";
       skipBtn.onclick = () => {
         overlay.classList.remove("active");
+        overlay.innerHTML = "";
         if (typeof onComplete === "function") onComplete(false);
       };
 
@@ -8067,10 +8105,34 @@
       overlay.onclick = (e) => {
         if (e.target === overlay) {
           overlay.classList.remove("active");
+          overlay.innerHTML = "";
           if (typeof onComplete === "function") onComplete(false);
         }
       };
       overlay.classList.add("active");
+    }
+
+    function promptReceivedPartFollowUps(part, onComplete) {
+      if (!part) {
+        if (typeof onComplete === "function") onComplete(false);
+        return;
+      }
+      const overlay = document.getElementById("modal-overlay");
+      if (overlay) {
+        openReceivedPartFollowUpsModal(part, onComplete);
+        return;
+      }
+      const partName = String(part.name || "Part").trim() || "Part";
+      const choice = window.confirm(
+        `"${partName}" is now marked Received.\n\nOK = Add to tasks\nCancel = Add to outside labor`
+      );
+      let changed = false;
+      if (choice) changed = createInstallTaskForReceivedPart(part);
+      else if (window.confirm(`Add "${partName}" to outside labor instead?`)) {
+        changed = createOutsideLaborForReceivedPart(part);
+      }
+      if (changed && typeof onComplete === "function") onComplete(true);
+      else if (typeof onComplete === "function") onComplete(false);
     }
 
     function refreshBuildSegmentUi() {
@@ -8093,7 +8155,7 @@
         syncWfInventoryListForPartStatus(result.next);
         refreshBuildSegmentUi();
         if (result.next === "Received" && prevStatus !== "Received") {
-          openReceivedPartFollowUpsModal(result.part, (changed) => {
+          promptReceivedPartFollowUps(result.part, (changed) => {
             if (changed) {
               currentVehicle = window.BuildPilotInventory.getVehicle(currentVehicle.id) || currentVehicle;
               refreshBuildSegmentUi();
@@ -8113,7 +8175,7 @@
       }
       refreshBuildSegmentUi();
       if (nextStatus === "Received" && prevStatus !== "Received") {
-        openReceivedPartFollowUpsModal(part, (changed) => {
+        promptReceivedPartFollowUps(part, (changed) => {
           if (changed) refreshBuildSegmentUi();
         });
       }
@@ -10859,6 +10921,8 @@
       renderWorkflowDashboard();
       wirePdfBuildSheetDrawer();
       syncPdfBuildSheetDrawerPresets();
+      wireRegistrationControls();
+      wireVehicleFinancialToggle();
 
       window.addEventListener("pageshow", refreshVehicleDetailFromMasterStorage);
       document.addEventListener("visibilitychange", function () {

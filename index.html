@@ -2519,7 +2519,7 @@
         : String(vehicleOrRaw || "active");
       const lower = raw.toLowerCase();
       if (lower === "sold") return "completed";
-      if (lower === "completed") return "completed";
+      if (lower === "completed" || lower === "complete" || lower === "archived") return "completed";
       return "active";
     }
 
@@ -4322,7 +4322,7 @@
         const ppNum = parseCost(priceInp.value) || 0;
 
         const buildType = normalizeBuildType(selectedBuildType);
-        vehicles.push(ensureVehicleProjectSchema({
+        const newVehicle = ensureVehicleProjectSchema({
           id, name, year, make, model,
           vin: vinInp.value.trim(),
           vehicleMode: "project",
@@ -4335,10 +4335,22 @@
           regNonOp: registrationStatus === "Non-Op",
           totalLaborCost: 0,
           parts: [], tasks: [], labor: []
-        }));
-        saveVehicles(vehicles);
+        });
+        vehicles.push(newVehicle);
+        if (window.BuildPilotStorage && window.BuildPilotStorage.writeVehiclesArrayToLocalStorage) {
+          window.BuildPilotStorage.writeVehiclesArrayToLocalStorage(vehicles);
+        } else {
+          saveVehicles(vehicles);
+        }
+        localStorage.setItem(LS_SELECTED_VEHICLE_ID_KEY, String(id));
+        try {
+          window.dispatchEvent(
+            new CustomEvent("buildpilot:vehicles-updated", { detail: { vehicleId: String(id) } })
+          );
+        } catch (_e) { /* ignore */ }
 
         overlay.classList.remove("active");
+        overlay.innerHTML = "";
         renderVehicles();
       };
 
@@ -4385,8 +4397,11 @@
       configs.forEach(({ toggleId, panelId }) => {
         const btn = document.getElementById(toggleId);
         const panel = document.getElementById(panelId);
-        if (!btn || !panel) return;
-        btn.addEventListener('click', function () {
+        if (!btn || !panel || btn.dataset.toolbarWired === '1') return;
+        btn.dataset.toolbarWired = '1';
+        btn.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
           const open = !panel.classList.contains('is-open');
           configs.forEach(({ toggleId: otherToggleId, panelId: otherPanelId }) => {
             if (otherPanelId === panelId) return;
@@ -4417,7 +4432,10 @@
       wireProjectStatsToggle();
       wireHeaderActions();
       const addVehicleBtn = document.getElementById('add-vehicle-btn');
-      if (addVehicleBtn) addVehicleBtn.addEventListener('click', openAddVehicleModal);
+      if (addVehicleBtn && addVehicleBtn.dataset.wired !== '1') {
+        addVehicleBtn.dataset.wired = '1';
+        addVehicleBtn.addEventListener('click', openAddVehicleModal);
+      }
       const addVehicleThumb = document.getElementById('add-vehicle-thumb');
       if (addVehicleThumb) {
         addVehicleThumb.addEventListener('click', function () {
