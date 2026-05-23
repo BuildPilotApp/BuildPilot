@@ -1611,9 +1611,43 @@
       return {
         buildPilotVaultVersion: BUILDPILOT_VAULT_VERSION,
         app: 'BuildPilot',
+        appVersion: BUILDPILOT_APP_VERSION,
         exportedAt: new Date().toISOString(),
+        vehicleCount: Array.isArray(entries[LS_VEHICLES_KEY]) ? entries[LS_VEHICLES_KEY].length : 0,
         entries
       };
+    }
+
+    /** Merge legacy per-vehicle keys into canonical vehicle records before backup/export. */
+    function syncAllLiveGarageDataBeforeExport() {
+      migrateLegacyKeysOntoVehicles();
+      let vehicles = loadVehicles();
+      let dirty = false;
+      vehicles.forEach((v) => {
+        if (!v || typeof v !== "object") return;
+        hydrateVehicleRecordCollections(v);
+        if (window.BuildPilotInventory) {
+          window.BuildPilotInventory.ensureVehicleInventory(v);
+        }
+        dirty = true;
+      });
+      if (dirty) {
+        if (window.BuildPilotStorage && window.BuildPilotStorage.writeVehiclesArrayToLocalStorage) {
+          window.BuildPilotStorage.writeVehiclesArrayToLocalStorage(vehicles);
+        } else {
+          saveVehicles(vehicles);
+        }
+      }
+    }
+
+    function notifyGarageDataUpdated(detail) {
+      try {
+        window.dispatchEvent(
+          new CustomEvent("buildpilot:vehicles-updated", {
+            detail: detail || { source: "garage-sync" }
+          })
+        );
+      } catch (_e) { /* ignore */ }
     }
 
     function validateBuildPilotVaultPayload(data) {
@@ -1690,18 +1724,20 @@
     }
 
     function exportBuildPilotVault() {
+      syncAllLiveGarageDataBeforeExport();
       const payload = collectBuildPilotVaultSnapshot();
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
       const objectUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
+      const anchor = document.createElement("a");
       anchor.href = objectUrl;
-      anchor.download = BUILDPILOT_VAULT_FILENAME;
-      anchor.rel = 'noopener';
-      anchor.style.display = 'none';
+      anchor.download = `BuildPilot_Master_Backup_${stamp}.json`;
+      anchor.rel = "noopener";
+      anchor.style.display = "none";
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 250);
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 500);
       closeTemplatesPanel();
     }
 
@@ -1748,6 +1784,9 @@
               importBuildPilotVaultEntries(validation.entries);
               migrateLegacyKeysOntoVehicles();
               renderVehicles();
+              renderGarageInvestmentStats();
+              renderGarageIntelligence();
+              notifyGarageDataUpdated({ source: "vault-restore" });
               alert('Project restored successfully.');
             } catch (err) {
               alert(err && err.message ? err.message : 'Could not restore project from file.');
@@ -3503,8 +3542,21 @@
           } catch (e) {}
         });
       });
-      saveVehicles(vehicles);
+      if (window.BuildPilotStorage && window.BuildPilotStorage.writeVehiclesArrayToLocalStorage) {
+        window.BuildPilotStorage.writeVehiclesArrayToLocalStorage(vehicles);
+      } else {
+        saveVehicles(vehicles);
+      }
+      migrateLegacyKeysOntoVehicles();
       renderVehicles();
+      renderGarageInvestmentStats();
+      renderGarageIntelligence();
+      notifyGarageDataUpdated({
+        source: "template-import",
+        mode,
+        vehiclesUpdated: vehicles.length,
+        itemsAdded
+      });
       showResultModal(created, itemsAdded);
     }
 
@@ -4163,6 +4215,7 @@
         const reader = new FileReader();
         reader.onload = async () => {
           try {
+            syncAllLiveGarageDataBeforeExport();
             const payloads = [];
             if (isXlsx) {
               if (typeof ExcelJS === "undefined") throw new Error("ExcelJS failed to load.");
@@ -4194,6 +4247,8 @@
             showChoiceModal(payloads);
           } catch (err) {
             alert(err && err.message ? err.message : "Could not parse build sheet.");
+          } finally {
+            uploadInput.value = "";
           }
         };
         if (isXlsx) reader.readAsArrayBuffer(file); else reader.readAsText(file);

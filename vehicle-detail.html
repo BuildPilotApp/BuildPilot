@@ -6590,6 +6590,7 @@
               return;
             }
           }
+          refreshLiveVehicleDataForExport();
           downloadBuildSheet(config).catch((err) => {
             console.error("Build sheet download failed:", err);
             alert("Could not generate the build sheet. The file will still include an embedded BuildPilot logo badge.");
@@ -7240,16 +7241,22 @@
       });
 
       saveVehicles(vehicles);
-      const refreshed = vehicles.find(v => v.id == currentVehicle.id) || vehicles[0];
-      if (refreshed) {
-        currentVehicle = refreshed;
-        localStorage.setItem(LS_SELECTED_VEHICLE_ID_KEY, String(currentVehicle.id));
-        refreshVehicleHero();
+      migrateLegacyKeysOntoVehicles();
+      if (currentVehicle) {
+        const refreshed = getVehiclesFromStorage().find((v) => v && String(v.id) === String(currentVehicle.id));
+        if (refreshed) {
+          currentVehicle = refreshed;
+          localStorage.setItem(LS_SELECTED_VEHICLE_ID_KEY, String(currentVehicle.id));
+        }
       }
+      refreshVehicleHero();
       refreshRegistrationUI();
       renderSystemFolders();
       renderTotalInvestment();
       updateProgress();
+      renderWorkflowDashboard();
+      refreshAllPartStatusSelectStyles();
+      notifyDashboardVehiclesUpdated();
       showImportResultModal(importedVehicles, importedItems);
     }
 
@@ -9829,7 +9836,44 @@
       }
     }
 
-    function computeBuildSheetFinancials() {
+    function refreshLiveVehicleDataForExport() {
+      if (!currentVehicle) return null;
+      migrateLegacyKeysOntoVehicles();
+      ensureCurrentVehicleArraysHydrated();
+      syncCurrentVehicleFromGarage();
+      const vehicles = getVehiclesFromStorage();
+      const match = vehicles.find((v) => v && String(v.id) === String(currentVehicle.id));
+      if (match) {
+        ensureVehicleProjectSchema(match);
+        hydrateVehicleRecordCollections(match);
+        if (window.BuildPilotInventory) {
+          window.BuildPilotInventory.ensureVehicleInventory(match);
+        }
+        currentVehicle = match;
+      }
+      if (window.BuildPilotInventory && currentVehicle) {
+        window.BuildPilotInventory.persistVehicle(currentVehicle);
+        currentVehicle = window.BuildPilotInventory.getVehicle(currentVehicle.id) || currentVehicle;
+      }
+      return currentVehicle;
+    }
+
+    function buildBuildSheetPartsStatusSummary(parts) {
+      const counts = { Needed: 0, Ordered: 0, Received: 0, Installed: 0 };
+      (parts || []).forEach((p) => {
+        const st = buildSheetPartStatusLabel(p);
+        if (Object.prototype.hasOwnProperty.call(counts, st)) counts[st] += 1;
+      });
+      return `Needed ${counts.Needed} · Ordered ${counts.Ordered} · Received ${counts.Received} · Installed ${counts.Installed}`;
+    }
+
+    function buildBuildSheetTasksProgressSummary(tasks) {
+      const list = Array.isArray(tasks) ? tasks : [];
+      if (!list.length) return "No tasks logged";
+      const done = list.filter((t) => isTaskComplete(t)).length;
+      const pct = Math.round((done / list.length) * 100);
+      return `${pct}% complete (${done} of ${list.length})`;
+    }
       const parts = getPartsFromStorage();
       const tasks = getTasksFromStorage();
       const labor = getLaborFromStorage();
@@ -10054,6 +10098,8 @@
       if (!config.showProjectOverview || !currentVehicle) return "";
       const v = currentVehicle;
       const snap = computeWorkflowSnapshot();
+      const parts = getPartsFromStorage();
+      const tasks = getTasksFromStorage();
       const rows = [];
       rows.push({ label: "Vehicle", value: getVehicleDisplayTitle(v) });
       const vin = String(v.vin || "").trim();
@@ -10066,6 +10112,8 @@
       rows.push({ label: "Build Organization", value: buildSheetBuildTypeLabel(v) });
       rows.push({ label: "Project Status", value: buildSheetProjectStatusLabel(v) });
       rows.push({ label: "Build Progress", value: `${snap.progressPct}%` });
+      rows.push({ label: "Tasks Progress", value: buildBuildSheetTasksProgressSummary(tasks) });
+      rows.push({ label: "Parts by Status", value: buildBuildSheetPartsStatusSummary(parts) });
       const finishRaw = getVehicleEstimatedFinishDateRaw(v);
       if (finishRaw) {
         const finishDate = parseVehicleCalendarDate(finishRaw);
@@ -10346,7 +10394,11 @@
             <td>${escapeBuildSheetHtml(row.value)}</td>
           </tr>`).join("");
       const forSaleHtml = config.showForSale
-        ? `<div class="for-sale-banner">For Sale: ${escapeBuildSheetHtml(formatMoney(config.salePrice))}</div>`
+        ? `<div class="for-sale-banner" role="status" aria-label="Vehicle for sale">
+            <span class="for-sale-banner__eyebrow">For Sale</span>
+            <span class="for-sale-banner__price">${escapeBuildSheetHtml(formatMoney(config.salePrice))}</span>
+            <span class="for-sale-banner__vehicle">${escapeBuildSheetHtml(getVehicleDisplayTitle(currentVehicle))}</span>
+          </div>`
         : "";
       const summaryTableHtml = financialRows.length
         ? `<section class="sheet-block financial-summary-block" aria-label="Financial summary">
@@ -10543,16 +10595,40 @@
     .sheet--minimal .sheet-hero-copy { text-align: left; }
     .sheet--minimal .sheet-hero { align-items: center; }
     .for-sale-banner {
-      margin: 6mm 0;
-      padding: 5mm 6mm;
+      margin: 0 0 8mm;
+      padding: 7mm 6mm;
       text-align: center;
-      font-size: 18pt;
-      font-weight: 800;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
       color: #fff;
-      background: #c41e12;
-      border-radius: 4px;
+      background: linear-gradient(180deg, #d42014 0%, #a81810 100%);
+      border: 2px solid #7a0f0a;
+      border-radius: 6px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .for-sale-banner__eyebrow {
+      display: block;
+      font-size: 11pt;
+      font-weight: 800;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      opacity: 0.95;
+    }
+    .for-sale-banner__price {
+      display: block;
+      margin-top: 2mm;
+      font-size: 28pt;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.02em;
+      line-height: 1.1;
+    }
+    .for-sale-banner__vehicle {
+      display: block;
+      margin-top: 2.5mm;
+      font-size: 10pt;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      opacity: 0.92;
     }
     .summary-table {
       width: 100%;
@@ -10788,6 +10864,7 @@
 </head>
 <body>
   <article class="sheet${sheetModeClass}">
+    ${forSaleHtml}
     <header class="sheet-hero">
       <div class="sheet-hero-brand">
         ${logoHtml}
@@ -10799,7 +10876,6 @@
         <p class="sheet-meta">Generated ${generated}</p>
       </div>
     </header>
-    ${forSaleHtml}
     ${projectOverviewHtml}
     ${summaryTableHtml}
     ${segmentProgressHtml}
@@ -10824,6 +10900,7 @@
      */
     async function downloadBuildSheet(config) {
       if (!currentVehicle) return;
+      refreshLiveVehicleDataForExport();
       const renderConfig = resolveBuildSheetRenderConfig(config);
       const financials = computeBuildSheetFinancials();
       const logoDataUrl = await loadBuildPilotLogoDataUrl();
@@ -10839,7 +10916,7 @@
       document.body.appendChild(downloadAnchor);
       downloadAnchor.click();
       document.body.removeChild(downloadAnchor);
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 250);
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 500);
     }
 
     function wireBulkActions() {
@@ -10872,6 +10949,7 @@
         const reader = new FileReader();
         reader.onload = async () => {
           try {
+            refreshLiveVehicleDataForExport();
             const parsedPayloads = [];
             if (isXlsx) {
               if (typeof ExcelJS === "undefined") throw new Error("ExcelJS failed to load.");
@@ -10908,6 +10986,8 @@
             openImportChoiceModal(parsedPayloads);
           } catch (err) {
             alert(err && err.message ? err.message : "Could not parse build sheet.");
+          } finally {
+            uploadInput.value = "";
           }
         };
         reader.onerror = () => {
