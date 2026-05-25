@@ -1745,7 +1745,8 @@
       const exportBtn = document.getElementById('vault-export-btn');
       const importBtn = document.getElementById('vault-import-btn');
       const importInput = document.getElementById('vault-import-input');
-      if (exportBtn) {
+      if (exportBtn && exportBtn.dataset.wired !== '1') {
+        exportBtn.dataset.wired = '1';
         exportBtn.addEventListener('click', () => {
           try {
             exportBuildPilotVault();
@@ -1754,7 +1755,8 @@
           }
         });
       }
-      if (importBtn && importInput) {
+      if (importBtn && importInput && importBtn.dataset.wired !== '1') {
+        importBtn.dataset.wired = '1';
         importBtn.addEventListener('click', () => {
           importInput.value = '';
           importInput.click();
@@ -2411,6 +2413,80 @@
         fields.url || "",
         fields.tracking || ""
       ];
+    }
+
+    function buildManifestLineItemsFromGarage(parts, tasks, labor) {
+      const rows = [];
+      (parts || []).forEach((p) => {
+        if (!p) return;
+        const status = window.BuildPilotInventory
+          ? window.BuildPilotInventory.normalizePartStatus(p.status)
+          : normalizeCsvStatus(p.status, "Part");
+        rows.push({
+          chapter: normalizeSystemCategory(p.category),
+          type: "Part",
+          name: String(p.name || "").trim(),
+          vendor: String(p.vendor || "").trim(),
+          hours: "",
+          cost: formatUsdExcel(parseCost(p.cost)),
+          status,
+          url: String(p.partUrl || "").trim(),
+          tracking: String(p.trackingNumber || "").trim()
+        });
+      });
+      (tasks || []).forEach((t) => {
+        if (!t) return;
+        const status = normalizeCsvStatus(t.status, "Task");
+        const hrs = parseFloat(t.estHours || 0);
+        const hours = Number.isFinite(hrs) && hrs > 0
+          ? (hrs % 1 === 0 ? `${hrs} hrs` : `${hrs.toFixed(1)} hrs`)
+          : "";
+        rows.push({
+          chapter: normalizeSystemCategory(t.category),
+          type: "Task",
+          name: String(t.name || "").trim(),
+          vendor: "",
+          hours,
+          cost: formatManifestCostPriceExport("Task", 0, t.laborCost, t.estHours),
+          status,
+          url: "",
+          tracking: String(t.trackingNumber || "").trim()
+        });
+      });
+      (labor || []).forEach((l) => {
+        if (!l) return;
+        const status = normalizeCsvStatus(l.status, "Outside Labor");
+        rows.push({
+          chapter: normalizeSystemCategory(l.category),
+          type: "Outside Labor",
+          name: String(l.shop || l.description || "Outside Labor").trim(),
+          vendor: String(l.shop || "").trim(),
+          hours: "",
+          cost: formatManifestCostPriceExport("Outside Labor", 0, l.cost, 0),
+          status,
+          url: "",
+          tracking: String(l.trackingNumber || "").trim()
+        });
+      });
+      return rows;
+    }
+
+    function appendVehicleManifestWorksheet(workbook, vehicle, usedNames, logoBase64) {
+      if (!vehicle) return;
+      const { parts, tasks, labor } = gatherGarageItemsForVehicle(vehicle);
+      const purchase = Number(vehicle.vehiclePurchasePrice) || 0;
+      const totalInv = computeVehicleTotalInvestmentGarage(vehicle, parts, labor);
+      const sheet = workbook.addWorksheet(safeSheetName(vehicle.name || "Vehicle", usedNames));
+      applyManifestBrandHeaderRow(sheet, workbook, logoBase64);
+      applyManifestMetaRowsToSheet(sheet, vehicle, parts, tasks, labor, totalInv, purchase);
+      sheet.addRow([]);
+      sheet.addRow(manifestLineItemHeaders());
+      const items = buildManifestLineItemsFromGarage(parts, tasks, labor);
+      items.forEach((fields) => sheet.addRow(manifestLineItemRow(fields)));
+      const padRows = Math.max(0, MANIFEST_TEMPLATE_ITEM_ROWS - items.length);
+      for (let i = 0; i < padRows; i += 1) sheet.addRow([]);
+      applyManifestTemplateRowValidations(sheet);
+      styleTemplateWorksheet(sheet, Math.max(items.length, MANIFEST_TEMPLATE_ITEM_ROWS));
     }
 
     function applyManifestMetaRowsToSheet(sheet, vehicle, parts, tasks, labor, totalInv, purchase) {
@@ -3232,6 +3308,7 @@
 
     async function downloadMasterTemplateWorkbook() {
       if (typeof ExcelJS === "undefined") throw new Error("ExcelJS failed to load.");
+      syncAllLiveGarageDataBeforeExport();
       const workbook = new ExcelJS.Workbook();
       ensureValidationListsSheet(workbook);
       const logoBase64 = await loadBuildPilotLogoBase64();
@@ -3251,6 +3328,11 @@
       }
       applyManifestTemplateRowValidations(newSheet);
       styleTemplateWorksheet(newSheet, MANIFEST_TEMPLATE_ITEM_ROWS);
+      filterProjectVehicles(loadVehicles()).forEach((vehicle) => {
+        if (!vehicle || vehicle.id == null) return;
+        hydrateVehicleRecordCollections(vehicle);
+        appendVehicleManifestWorksheet(workbook, vehicle, usedNames, logoBase64);
+      });
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
       const url = URL.createObjectURL(blob);
@@ -4198,6 +4280,9 @@
       const uploadBtn = document.getElementById("bulk-upload-data-btn");
       const uploadInput = document.getElementById("bulk-upload-input");
       if (!downloadBtn || !uploadBtn || !uploadInput) return;
+      if (downloadBtn.dataset.wired === "1") return;
+      downloadBtn.dataset.wired = "1";
+      uploadBtn.dataset.wired = "1";
       downloadBtn.addEventListener("click", () => {
         downloadMasterTemplateWorkbook().catch(err => alert(err && err.message ? err.message : "Template download failed."));
         closeTemplatesPanel();

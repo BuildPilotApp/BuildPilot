@@ -9845,18 +9845,6 @@
       updateProgress();
     }
 
-    function wireAddButtons() {
-      const addPartBtn = document.getElementById("wf-add-part-btn");
-      if (addPartBtn && addPartBtn.dataset.wfAddWired !== "1") {
-        addPartBtn.dataset.wfAddWired = "1";
-        addPartBtn.addEventListener("click", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          openWfAddPartWorkflow();
-        });
-      }
-    }
-
     function refreshLiveVehicleDataForExport() {
       if (!currentVehicle) return null;
       migrateLegacyKeysOntoVehicles();
@@ -11040,9 +11028,23 @@
         if (bottomNav) bottomNav.hidden = false;
       }
 
+      function wireDetailBottomNavFallback() {
+        const gmBtn = document.getElementById("detail-garage-mode-btn");
+        if (gmBtn && gmBtn.dataset.wired !== "1") {
+          gmBtn.dataset.wired = "1";
+          gmBtn.href = "index.html";
+          gmBtn.setAttribute("aria-label", "Garage Mode (select a vehicle from dashboard)");
+          gmBtn.addEventListener("click", (e) => {
+            e.preventDefault();
+            window.location.href = "index.html";
+          });
+        }
+      }
+
       if (!vehicleId) {
         if (heroNameEl) heroNameEl.textContent = "Vehicle Not Found";
         showBottomNav();
+        wireDetailBottomNavFallback();
         return;
       }
 
@@ -11051,6 +11053,7 @@
       if (!currentVehicle) {
         if (heroNameEl) heroNameEl.textContent = "Vehicle Not Found";
         showBottomNav();
+        wireDetailBottomNavFallback();
         return;
       }
 
@@ -11081,7 +11084,6 @@
       resetBuildSegmentUiState();
       refreshVehicleHero();
 
-      wireAddButtons();
       initBuildSheetButtons();
       wireWorkflowDashboard();
       wireProjectStatusActions();
