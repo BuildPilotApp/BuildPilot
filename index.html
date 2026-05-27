@@ -818,10 +818,28 @@
     }
 
     .my-builds-actions {
+      position: relative;
+      z-index: 5;
       display: flex;
       flex-direction: column;
       gap: 0.5rem;
       margin: 0 0 0.25rem;
+    }
+    #vehicle-cards-active,
+    #vehicle-cards-completed {
+      display: flex;
+      flex-direction: column;
+      gap: 0.875rem;
+      width: 100%;
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      overflow: visible !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
     }
     .my-builds-drawer-stack {
       display: flex;
@@ -1714,6 +1732,14 @@
         if (!isBuildPilotStorageKey(key)) return;
         writeBuildPilotVaultEntry(key, value);
       });
+    }
+
+    function dismissModalOverlay() {
+      const overlay = document.getElementById('modal-overlay');
+      if (!overlay) return;
+      overlay.classList.remove('active');
+      overlay.innerHTML = '';
+      overlay.onclick = null;
     }
 
     function closeTemplatesPanel() {
@@ -3281,6 +3307,7 @@
     }
 
     function renderVehicles() {
+      dismissModalOverlay();
       const vehicles = filterProjectVehicles(loadVehicles()).filter(v => v && typeof v.id !== "undefined");
       const active = vehicles.filter(v => normalizeVehicleStatus(v) === "active");
       const completed = vehicles.filter(v => normalizeVehicleStatus(v) === "completed");
@@ -4343,6 +4370,7 @@
     }
 
     function openAddVehicleModal() {
+      dismissModalOverlay();
       const overlay = document.getElementById("modal-overlay");
       if (!overlay) {
         console.error("BuildPilot: modal overlay missing");
@@ -4459,10 +4487,7 @@
       const cancelBtn = document.createElement("button");
       cancelBtn.type = "button"; cancelBtn.className = "modal-btn-cancel";
       cancelBtn.textContent = "Cancel";
-      cancelBtn.onclick = () => {
-        overlay.classList.remove("active");
-        overlay.innerHTML = "";
-      };
+      cancelBtn.onclick = () => dismissModalOverlay();
 
       const submitBtn = document.createElement("button");
       submitBtn.type = "button"; submitBtn.className = "modal-btn-primary";
@@ -4525,8 +4550,7 @@
           );
         } catch (_e) { /* ignore */ }
 
-        overlay.classList.remove("active");
-        overlay.innerHTML = "";
+        dismissModalOverlay();
         renderVehicles();
         window.location.href = `vehicle-detail.html?id=${encodeURIComponent(vehicleIdStr)}`;
       };
@@ -4534,16 +4558,34 @@
       btnRow.appendChild(cancelBtn);
       btnRow.appendChild(submitBtn);
       modal.appendChild(btnRow);
+      modal.addEventListener("click", (e) => e.stopPropagation());
       overlay.appendChild(modal);
       overlay.onclick = (e) => {
-        if (e.target === overlay) {
-          overlay.classList.remove("active");
-          overlay.innerHTML = "";
-        }
+        if (e.target === overlay) dismissModalOverlay();
       };
       overlay.classList.add("active");
 
       yearInp.focus();
+    }
+
+    function wireDashboardPrimaryActions() {
+      if (document.body.dataset.dashboardActionsWired === "1") return;
+      document.body.dataset.dashboardActionsWired = "1";
+      document.body.addEventListener("click", function (e) {
+        const addBtn = e.target.closest("#add-vehicle-btn, #add-vehicle-thumb");
+        if (addBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          openAddVehicleModal();
+          return;
+        }
+        const infoBtn = e.target.closest("#header-info-btn");
+        if (infoBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          openInfoPanelModal();
+        }
+      });
     }
 
     function measureFluidCollapsePanel(panel) {
@@ -4609,30 +4651,12 @@
       if (window.BuildPilotStorage && window.BuildPilotStorage.ensureBetaCleanStorageForTrial) {
         window.BuildPilotStorage.ensureBetaCleanStorageForTrial();
       }
+      dismissModalOverlay();
       migrateLegacyKeysOntoVehicles();
       renderVehicles();
       wireProjectStatsToggle();
       wireHeaderActions();
-      function wireAddVehicleControls() {
-        const openModal = function (e) {
-          if (e) {
-            e.preventDefault();
-            e.stopPropagation();
-          }
-          openAddVehicleModal();
-        };
-        const addVehicleBtn = document.getElementById('add-vehicle-btn');
-        if (addVehicleBtn && addVehicleBtn.dataset.wired !== '1') {
-          addVehicleBtn.dataset.wired = '1';
-          addVehicleBtn.addEventListener('click', openModal);
-        }
-        const addVehicleThumb = document.getElementById('add-vehicle-thumb');
-        if (addVehicleThumb && addVehicleThumb.dataset.wired !== '1') {
-          addVehicleThumb.dataset.wired = '1';
-          addVehicleThumb.addEventListener('click', openModal);
-        }
-      }
-      wireAddVehicleControls();
+      wireDashboardPrimaryActions();
       wireBulkActions();
       wireVaultActions();
       const headerLogo = document.querySelector(".app-header-logo");
@@ -4644,7 +4668,10 @@
       document.addEventListener('visibilitychange', function () {
         if (!document.hidden) renderVehicles();
       });
-      window.addEventListener('pageshow', renderVehicles);
+      window.addEventListener('pageshow', function () {
+        dismissModalOverlay();
+        renderVehicles();
+      });
       window.addEventListener('buildpilot:vehicles-updated', renderVehicles);
       window.addEventListener('storage', function (e) {
         if (e.key === LS_VEHICLES_KEY || e.key === LEGACY_LS_VEHICLES_KEY) renderVehicles();

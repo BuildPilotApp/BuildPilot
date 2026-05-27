@@ -4008,42 +4008,45 @@
 
     function applyVehicleRegistration(expiryDateValue, isNonOp) {
       if (!currentVehicle) return;
-      const vehicles = getVehiclesFromStorage();
-      const match = vehicles.find(v => v.id == currentVehicle.id);
-      if (!match) return;
+      try {
+        const vehicles = getVehiclesFromStorage();
+        const match = vehicles.find(v => v.id == currentVehicle.id);
+        if (!match) return;
 
-      const regExpiryKey = getRegExpiryStorageKey(currentVehicle.id);
-      match.regNonOp = !!isNonOp;
+        const regExpiryKey = getRegExpiryStorageKey(currentVehicle.id);
+        match.regNonOp = !!isNonOp;
 
-      if (isNonOp) {
-        match.registrationStatus = "Non-Op";
-        match.regMonth = "";
-        match.regDay = "";
-        localStorage.removeItem(regExpiryKey);
-      } else if (expiryDateValue) {
-        const expDate = new Date(expiryDateValue + "T00:00:00");
-        if (!isNaN(expDate.getTime())) {
-          localStorage.setItem(regExpiryKey, expDate.toISOString());
-          match.regMonth = String(expDate.getMonth() + 1);
-          match.regDay = String(expDate.getDate());
-          match.registrationStatus = deriveRegistrationStatusFromExpiry(expDate);
+        if (isNonOp) {
+          match.registrationStatus = "Non-Op";
+          match.regMonth = "";
+          match.regDay = "";
+          localStorage.removeItem(regExpiryKey);
+        } else if (expiryDateValue) {
+          const expDate = new Date(expiryDateValue + "T00:00:00");
+          if (!isNaN(expDate.getTime())) {
+            localStorage.setItem(regExpiryKey, expDate.toISOString());
+            match.regMonth = String(expDate.getMonth() + 1);
+            match.regDay = String(expDate.getDate());
+            match.registrationStatus = deriveRegistrationStatusFromExpiry(expDate);
+          }
+        } else {
+          localStorage.removeItem(regExpiryKey);
+          match.regMonth = "";
+          match.regDay = "";
+          delete match.registrationStatus;
         }
-      } else {
-        localStorage.removeItem(regExpiryKey);
-        match.regMonth = "";
-        match.regDay = "";
-        delete match.registrationStatus;
-      }
 
-      saveVehicles(vehicles);
-      currentVehicle = match;
-      refreshVehicleHero();
-      refreshRegistrationUI();
-      renderWorkflowDashboard();
-      renderTotalInvestment();
-      updateProgress();
-      closeHeroEditModal();
-      closeInlineDrawer("reg-status-toggle", "reg-status-panel");
+        saveVehicles(vehicles);
+        currentVehicle = match;
+        refreshVehicleHero();
+        refreshRegistrationUI();
+        renderWorkflowDashboard();
+        renderTotalInvestment();
+        updateProgress();
+      } finally {
+        closeHeroEditModal();
+        closeInlineDrawer("reg-status-toggle", "reg-status-panel");
+      }
     }
 
     function saveVehicleTargetCompletionDate(raw) {
@@ -4223,10 +4226,12 @@
 
       const saveBtn = document.createElement("button");
       saveBtn.type = "button";
+      saveBtn.className = "modal-btn-primary";
       saveBtn.textContent = "Save";
-      saveBtn.onclick = () => {
+      saveBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         applyVehicleRegistration(expiryInp.value, nonOpCb.checked);
-        closeHeroEditModal();
       };
 
       btnRow.appendChild(cancelBtn);
@@ -4236,6 +4241,7 @@
       modal.appendChild(fields);
       modal.appendChild(cycleBlock);
       modal.appendChild(btnRow);
+      modal.addEventListener("click", (e) => e.stopPropagation());
       overlay.appendChild(modal);
       overlay.onclick = (e) => { if (e.target === overlay) closeHeroEditModal(); };
       overlay.classList.add("active");
@@ -4824,7 +4830,11 @@
         refreshVehicleHero();
       }
       if (!currentVehicle) return;
+      ensureCurrentVehicleArraysHydrated();
       syncCurrentVehicleFromGarage();
+      if (window.BuildPilotInventory) {
+        window.BuildPilotInventory.ensureVehicleInventory(currentVehicle);
+      }
       if (typeof renderWorkflowDashboard === "function") renderWorkflowDashboard();
       if (typeof renderBuildActivitySection === "function") renderBuildActivitySection();
       if (typeof updateProgress === "function") updateProgress();
@@ -4949,11 +4959,12 @@
       if (!Array.isArray(currentVehicle.parts)) currentVehicle.parts = [];
       if (!Array.isArray(currentVehicle.tasks)) currentVehicle.tasks = [];
       if (!Array.isArray(currentVehicle.labor)) currentVehicle.labor = [];
+      ensureCurrentVehicleArraysHydrated();
     }
 
     function getPartsFromStorage() {
       syncCurrentVehicleFromGarage();
-      return currentVehicle.parts;
+      return Array.isArray(currentVehicle.parts) ? currentVehicle.parts : [];
     }
     function setPartsToStorage(parts) {
       const vehicles = getVehiclesFromStorage();
@@ -4969,7 +4980,7 @@
 
     function getTasksFromStorage() {
       syncCurrentVehicleFromGarage();
-      return currentVehicle.tasks;
+      return Array.isArray(currentVehicle.tasks) ? currentVehicle.tasks : [];
     }
     function setTasksToStorage(tasks) {
       const vehicles = getVehiclesFromStorage();
@@ -5224,6 +5235,8 @@
     }
 
     function computeWorkflowSnapshot() {
+      ensureCurrentVehicleArraysHydrated();
+      syncCurrentVehicleFromGarage();
       const parts = getPartsFromStorage();
       const tasks = getTasksFromStorage();
       const labor = getLaborFromStorage();
@@ -6226,7 +6239,6 @@
       const nonOpCb = document.getElementById("reg-drawer-nonop");
       if (!expiryInp || !nonOpCb) return;
       applyVehicleRegistration(expiryInp.value, nonOpCb.checked);
-      closeInlineDrawer("reg-status-toggle", "reg-status-panel");
     }
 
     function readCssLengthPx(value) {

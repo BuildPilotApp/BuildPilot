@@ -149,7 +149,6 @@ b,
 /* Vehicle cards — fixed height matches active + archived (ux tokens) */
 .vehicle-card,
 .list-stack > .vehicle-card,
-[id*="vehicle-card"],
 .card.vehicle-card {
   display: flex !important;
   flex-direction: column !important;
